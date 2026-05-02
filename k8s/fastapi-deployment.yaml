@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi
+  namespace: novacommerce
+  labels: {app: fastapi}
+spec:
+  replicas: 6
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 2, maxUnavailable: 0}
+  selector:
+    matchLabels: {app: fastapi}
+  template:
+    metadata:
+      labels: {app: fastapi}
+    spec:
+      containers:
+        - name: fastapi
+          image: ghcr.io/muhammaddiyor2002/novacommerce-fastapi:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8001, name: http}]
+          envFrom:
+            - configMapRef: {name: novacommerce-config}
+            - secretRef: {name: novacommerce-secrets}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests: {cpu: "200m", memory: "200Mi"}
+            limits:   {cpu: "1500m", memory: "768Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi
+  namespace: novacommerce
+spec:
+  type: ClusterIP
+  selector: {app: fastapi}
+  ports:
+    - {port: 80, targetPort: 8001, name: http}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastapi
+  namespace: novacommerce
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastapi
+  minReplicas: 6
+  maxReplicas: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}

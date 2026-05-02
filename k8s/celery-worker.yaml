@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: novacommerce
+  labels: {app: celery-worker}
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: celery-worker}
+  template:
+    metadata:
+      labels: {app: celery-worker}
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/muhammaddiyor2002/novacommerce-django:latest
+          command: ["celery", "-A", "novacommerce", "worker", "-l", "info", "-Q",
+                    "default,notifications,payments,analytics", "-c", "8"]
+          envFrom:
+            - configMapRef: {name: novacommerce-config}
+            - secretRef: {name: novacommerce-secrets}
+          resources:
+            requests: {cpu: "200m", memory: "256Mi"}
+            limits:   {cpu: "1000m", memory: "1Gi"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: novacommerce
+  labels: {app: celery-beat}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: celery-beat}
+  template:
+    metadata:
+      labels: {app: celery-beat}
+    spec:
+      containers:
+        - name: beat
+          image: ghcr.io/muhammaddiyor2002/novacommerce-django:latest
+          command: ["celery", "-A", "novacommerce", "beat", "-l", "info",
+                    "-S", "django_celery_beat.schedulers:DatabaseScheduler"]
+          envFrom:
+            - configMapRef: {name: novacommerce-config}
+            - secretRef: {name: novacommerce-secrets}
+          resources:
+            requests: {cpu: "50m", memory: "128Mi"}
+            limits:   {cpu: "300m", memory: "256Mi"}

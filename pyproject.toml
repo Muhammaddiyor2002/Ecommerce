@@ -1,0 +1,92 @@
+[project]
+name = "novacommerce-core"
+version = "0.1.0"
+description = "Production-grade e-commerce backend platform (Django + FastAPI)"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    "**/migrations/**",
+    "build",
+    "dist",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",          # pycodestyle / pyflakes
+    "I",                      # isort
+    "B",                      # bugbear
+    "C4",                     # comprehensions
+    "UP",                     # pyupgrade
+    "N",                      # naming
+    "DJ",                     # django
+    "S",                      # bandit-lite
+    "RUF",                    # ruff
+]
+ignore = [
+    "E501",                   # line length (handled by formatter)
+    "S101",                   # asserts (allowed in tests)
+    "S105", "S106",           # hardcoded password strings (false-positives in fixtures)
+    "S110",                   # try/except/pass (acceptable in cache wrappers)
+    "S311",                   # non-crypto random (we don't use random for crypto)
+    "S324",                   # md5 used by Click provider per their spec (not for security)
+    "S608",                   # SQL strings (we use SQLAlchemy text() for read-only queries)
+    "B008",                   # FastAPI Depends() in defaults
+    "B904",                   # raise without `from` (acceptable inside service helpers)
+    "N806",                   # `User = get_user_model()` is idiomatic in Django
+    "N818",                   # exception name suffix
+    "RUF012",                 # ClassVar required for mutable defaults (noisy on Django Admin)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["S101", "S106", "S311"]
+"**/settings/*.py" = ["F401", "F403", "F405"]
+"scripts/**/*" = ["S101", "T201"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.13"
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false      # gradual adoption
+ignore_missing_imports = true
+plugins = ["mypy_django_plugin.main"]
+exclude = ["migrations/", "build/", ".venv/"]
+
+[tool.django-stubs]
+django_settings_module = "novacommerce.settings.dev"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "novacommerce.settings.test"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+addopts = "-ra --strict-markers --tb=short"
+
+[tool.coverage.run]
+branch = true
+source = ["django_app", "fastapi_app"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/settings/*",
+    "manage.py",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 75
