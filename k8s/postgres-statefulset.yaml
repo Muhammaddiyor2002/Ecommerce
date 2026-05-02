@@ -1,0 +1,44 @@
+# Reference StatefulSet for PostgreSQL. In production, prefer a managed
+# database (RDS, Cloud SQL, Crunchy Data, etc.).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: novacommerce
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports: [{containerPort: 5432}]
+          env:
+            - {name: POSTGRES_USER, valueFrom: {secretKeyRef: {name: novacommerce-secrets, key: POSTGRES_USER}}}
+            - {name: POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: novacommerce-secrets, key: POSTGRES_PASSWORD}}}
+            - {name: POSTGRES_DB, value: novacommerce}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+          resources:
+            requests: {cpu: "500m", memory: "512Mi"}
+            limits:   {cpu: "2000m", memory: "4Gi"}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 50Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: novacommerce
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432, targetPort: 5432}]
+  clusterIP: None

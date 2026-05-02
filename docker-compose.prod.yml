@@ -1,0 +1,103 @@
+# =============================================================
+# Production overlay
+# Run:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# =============================================================
+name: novacommerce-prod
+
+services:
+  django:
+    build:
+      args:
+        REQ_FILE: requirements/prod.txt
+    environment:
+      DEBUG: "false"
+      ENV: prod
+      DJANGO_SETTINGS_MODULE: novacommerce.settings.prod
+      LOG_FORMAT: json
+      LOG_LEVEL: INFO
+    deploy:
+      replicas: 4
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    volumes: []
+    command:
+      - gunicorn
+      - novacommerce.asgi:application
+      - --worker-class
+      - uvicorn.workers.UvicornWorker
+      - --workers
+      - "4"
+      - --bind
+      - 0.0.0.0:8000
+      - --keep-alive
+      - "5"
+      - --graceful-timeout
+      - "30"
+      - --access-logfile
+      - "-"
+
+  fastapi:
+    build:
+      args:
+        REQ_FILE: requirements/prod.txt
+    environment:
+      DEBUG: "false"
+      ENV: prod
+      LOG_FORMAT: json
+    deploy:
+      replicas: 4
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 768M
+    volumes: []
+    command:
+      - uvicorn
+      - fastapi_app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --workers
+      - "4"
+      - --proxy-headers
+
+  celery_worker:
+    build:
+      args:
+        REQ_FILE: requirements/prod.txt
+    environment:
+      DEBUG: "false"
+      ENV: prod
+    deploy:
+      replicas: 2
+    volumes: []
+
+  celery_beat:
+    build:
+      args:
+        REQ_FILE: requirements/prod.txt
+    environment:
+      DEBUG: "false"
+      ENV: prod
+    volumes: []
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: novacommerce-nginx
+    restart: unless-stopped
+    depends_on:
+      - django
+      - fastapi
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/proxy_common.conf:/etc/nginx/proxy_common.conf:ro
+      - django_static:/var/www/static:ro
+      - django_media:/var/www/media:ro

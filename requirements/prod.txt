@@ -1,0 +1,8 @@
+-r base.txt
+
+# --- Production WSGI/ASGI ---
+gunicorn==23.0.0
+uvicorn-worker==0.3.0
+
+# --- Performance ---
+gevent==24.11.1

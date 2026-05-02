@@ -1,0 +1,223 @@
+# =============================================================
+# NovaCommerce Core — local development docker-compose
+# Spin up: docker compose up --build
+# =============================================================
+name: novacommerce
+
+x-common-env: &common-env
+  ENV: dev
+  DEBUG: "true"
+  SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-prod}
+  ALLOWED_HOSTS: localhost,127.0.0.1,django,fastapi,nginx
+  DATABASE_URL: postgresql://novacommerce:novacommerce@postgres:5432/novacommerce
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: novacommerce
+  POSTGRES_USER: novacommerce
+  POSTGRES_PASSWORD: novacommerce
+  REDIS_URL: redis://redis:6379/0
+  REDIS_CACHE_URL: redis://redis:6379/1
+  REDIS_CHANNELS_URL: redis://redis:6379/2
+  CELERY_BROKER_URL: redis://redis:6379/3
+  CELERY_RESULT_BACKEND: redis://redis:6379/4
+  JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-jwt-key-change}
+  EMAIL_HOST: mailhog
+  EMAIL_PORT: 1025
+  LOG_FORMAT: console
+  LOG_LEVEL: DEBUG
+  DJANGO_SETTINGS_MODULE: novacommerce.settings.dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: novacommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: novacommerce
+      POSTGRES_USER: novacommerce
+      POSTGRES_PASSWORD: novacommerce
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novacommerce -d novacommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+
+  redis:
+    image: redis:7-alpine
+    container_name: novacommerce-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: novacommerce-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI
+
+  django:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.django
+      args:
+        REQ_FILE: requirements/dev.txt
+    container_name: novacommerce-django
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    volumes:
+      - ./django_app:/app/django_app
+      - ./scripts:/app/scripts
+      - django_static:/app/static
+      - django_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command:
+      - daphne
+      - -b
+      - 0.0.0.0
+      - -p
+      - "8000"
+      - novacommerce.asgi:application
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fastapi
+      args:
+        REQ_FILE: requirements/dev.txt
+    container_name: novacommerce-fastapi
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    volumes:
+      - ./fastapi_app:/app/fastapi_app
+      - ./django_app:/app/django_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    command:
+      - uvicorn
+      - fastapi_app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --reload
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.django
+      args:
+        REQ_FILE: requirements/dev.txt
+    container_name: novacommerce-celery-worker
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      RUN_MIGRATIONS: "false"
+      COLLECT_STATIC: "false"
+    volumes:
+      - ./django_app:/app/django_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - celery
+      - -A
+      - novacommerce
+      - worker
+      - --loglevel=info
+      - --concurrency=4
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.django
+      args:
+        REQ_FILE: requirements/dev.txt
+    container_name: novacommerce-celery-beat
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      RUN_MIGRATIONS: "false"
+      COLLECT_STATIC: "false"
+    volumes:
+      - ./django_app:/app/django_app
+    depends_on:
+      - celery_worker
+    command:
+      - celery
+      - -A
+      - novacommerce
+      - beat
+      - --loglevel=info
+      - --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.django
+      args:
+        REQ_FILE: requirements/dev.txt
+    container_name: novacommerce-flower
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      RUN_MIGRATIONS: "false"
+      COLLECT_STATIC: "false"
+    depends_on:
+      - celery_worker
+    ports:
+      - "5555:5555"
+    command:
+      - celery
+      - -A
+      - novacommerce
+      - flower
+      - --port=5555
+
+volumes:
+  postgres_data:
+  redis_data:
+  django_static:
+  django_media:

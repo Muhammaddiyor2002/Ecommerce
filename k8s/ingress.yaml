@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: novacommerce
+  namespace: novacommerce
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - novacommerce.example.com
+        - fastapi.novacommerce.example.com
+      secretName: novacommerce-tls
+  rules:
+    - host: novacommerce.example.com
+      http:
+        paths:
+          - path: /api/v1/catalog
+            pathType: Prefix
+            backend: {service: {name: fastapi, port: {name: http}}}
+          - path: /api/v1/search
+            pathType: Prefix
+            backend: {service: {name: fastapi, port: {name: http}}}
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: django, port: {name: http}}}
+    - host: fastapi.novacommerce.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: fastapi, port: {name: http}}}
