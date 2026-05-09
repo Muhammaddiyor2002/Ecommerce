@@ -27,7 +27,7 @@ websockets==13.1
 
 # --- Channels (WebSockets in Django) ---
 channels==4.2.0
-channels-redis==4.2.1
+channels-redis==4.3.0
 daphne==4.1.2
 
 # --- Database ---
