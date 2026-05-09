@@ -67,6 +67,6 @@ Pillow==11.0.0
 python-slugify==8.0.4
 phonenumbers==8.13.50
 qrcode==8.0
-orjson==3.10.12
+orjson==3.11.9
 ulid-py==1.1.0
 tenacity==9.0.0
